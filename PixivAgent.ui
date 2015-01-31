@@ -46,6 +46,9 @@
      </item>
      <item>
       <widget class="QLineEdit" name="id">
+       <property name="inputMethodHints">
+        <set>Qt::ImhDigitsOnly</set>
+       </property>
        <property name="placeholderText">
         <string/>
        </property>

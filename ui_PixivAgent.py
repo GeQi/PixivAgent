@@ -2,7 +2,7 @@
 
 # Form implementation generated from reading ui file 'PixivAgent.ui'
 #
-# Created: Thu Jan 29 18:46:06 2015
+# Created: Fri Jan 30 20:41:51 2015
 #      by: PyQt4 UI code generator 4.11.3
 #
 # WARNING! All changes made in this file will be lost!
@@ -42,6 +42,7 @@ class Ui_main(object):
         self.label.setObjectName(_fromUtf8("label"))
         self.horizontalLayout.addWidget(self.label)
         self.id = QtGui.QLineEdit(main)
+        self.id.setInputMethodHints(QtCore.Qt.ImhDigitsOnly)
         self.id.setPlaceholderText(_fromUtf8(""))
         self.id.setObjectName(_fromUtf8("id"))
         self.horizontalLayout.addWidget(self.id)
