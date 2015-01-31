@@ -18,7 +18,7 @@ def get_page(session, url):
     request = session.get(url)
 
     doc = html.document_fromstring(request.content)
-    doc.make_links_absolute(r"http://www.pixiv.net/")
+    doc.make_links_absolute("http://www.pixiv.net/")
 
     return doc
 
@@ -134,6 +134,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.dir.setEnabled(bool)
         self.btn_dir.setEnabled(bool)
 
+    # slots
     def analyse(self):
         self.set_all(False)
         self.btn.setEnabled(False)
@@ -168,7 +169,6 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.set_all(True)
         self.btn.setEnabled(True)
 
-    # slots
     def show_login(self):
         self.login = Login(self.session, self.unlock)
         self.login.show()
@@ -209,7 +209,7 @@ class Login(QDialog, ui_PixivAgent_login.Ui_login):
             data = {"mode": "login",
                     "pixiv_id": str(self.email.text()),
                     "pass": str(self.password.text())}
-            self.request_login = self.session.post(url=url_login, data=data, allow_redirects=False)
+            self.request_login = self.session.post(url=url_login, data=data, allow_redirects=False, verify=False)
 
         # 确认
         def confirm():
