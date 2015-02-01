@@ -4,6 +4,7 @@ import os
 import re
 import sys
 import threading
+import Queue
 
 import requests
 from lxml import html
@@ -16,14 +17,10 @@ from PyQt4.QtGui import *
 
 def get_page(session, url):
     request = session.get(url)
-
     doc = html.document_fromstring(request.content)
     doc.make_links_absolute("http://www.pixiv.net/")
-
     return doc
 
-
-# 画师id, 作品类型 -> 作品页面url迭代器
 def iter_urls_work(session, id_user, type, num):
     for page in range(num / 20 + 1):
         url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
@@ -31,7 +28,6 @@ def iter_urls_work(session, id_user, type, num):
 
         for i, elem_work in enumerate(elems_work):
             yield elem_work.find("a").get("href")
-
             if (page * 20 + i + 1) >= num:
                 break
 
@@ -46,9 +42,6 @@ class Work(object):
         self.title = self.get_title()
         self.urls_image = self.get_urls_image()
 
-    def __str__(self):
-        return str(len(self))+self.type+self.id+self.title+self.url
-
     def __len__(self):
         return len(self.urls_image)
 
@@ -56,19 +49,15 @@ class Work(object):
         elem_works_display = self.page.find_class("works_display")
         if not elem_works_display:
             return "ugoira"
+        elif elem_works_display[0].find_class("manga"):
+            return "manga"
+        elif elem_works_display[0].find_class("multiple"):
+            return "multiple"
         else:
-            elem_works_manga = elem_works_display[0].find_class("manga")
-            if elem_works_manga:
-                return "manga"
-            else:
-                elem_works_multiple = elem_works_display[0].find_class("multiple")
-                if elem_works_multiple:
-                    return "multiple"
-                else:
-                    return "illust"
+            return "illust"
 
     def get_id(self):
-        return re.findall(r"\d+$", self.url)[0]      # TODO better ways?
+        return re.findall(r"\d+$", self.url)[0]
 
     def get_title(self):
         return self.page.find_class("work-info")[0].find_class("title")[0].text
@@ -77,10 +66,10 @@ class Work(object):
         if self.type == "illust":
             elems_image = self.page.find_class("original-image")
         elif self.type == "multiple":
-            url = self.page.find_class("works_display")[0].find("a").get("href")      # TODO better ways?
+            url = self.page.find_class("works_display")[0].find("a").get("href")
             elems_image = get_page(self.session, url).find_class("image")
         elif self.type == "manga":
-            url = self.page.find_class("works_display")[0].find("a").get("href")      # TODO better ways?
+            url = self.page.find_class("works_display")[0].find("a").get("href")
             elems_image = get_page(self.session, url).find_class("image")
         elif self.type == "ugoira":
             raise NotImplementedError        # TODO
@@ -94,9 +83,8 @@ class Work(object):
         except Exception:
             raise IOError
 
-        for i, url in enumerate(self.urls_image):       # TODO
+        for i, url in enumerate(self.urls_image):
             request_image = self.session.get(url)
-
             if self.type == "illust":
                 with open(os.path.join(dir_download, self.id+".jpg"), "wb") as file:
                     file.write(request_image.content)
@@ -109,12 +97,14 @@ class Work(object):
 
 class Main(QDialog, ui_PixivAgent.Ui_main):
     # signals:
-    trigger = pyqtSignal()
+    signal_analyse_finished = pyqtSignal()
 
     def __init__(self):
-        super(Main, self).__init__()
+        QDialog.__init__(self)
+        ui_PixivAgent.Ui_main.__init__(self)
         self.setupUi(self)
-        self.set_all(False)
+        self.set_all(False, btn=True)
+        self.dir.setText(os.path.join(os.getcwd(), "Download"))
 
         # 建立会话
         self.session = requests.Session()
@@ -122,52 +112,67 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
                    "Referer": r"http://www.pixiv.net/"}
         self.session.headers.update(headers)
 
-        self.dir.setText(os.path.join(os.getcwd(), "Download"))
+        # 初始化队列
+        self.queue = Queue.Queue()
+        self.history = []
+
+        # 初始化线程
+        self.threads_num = 5
+        self.lock = threading.Lock()
+        self.event_analyse = threading.Event()
+        self.event_download = threading.Event()
+        self.create_thread_analyse()
+        self.create_thread_download()
 
         # connections
         self.btn.clicked.connect(self.show_login)
         self.btn_dir.clicked.connect(self.show_dir)
+        self.signal_analyse_finished.connect(self.event_download.set)
+        self.signal_analyse_finished.connect(self.set_all)
 
-    def set_all(self, bool):
+    def set_all(self, bool=True, btn=True):
         self.id.setEnabled(bool)
         self.amount.setEnabled(bool)
         self.dir.setEnabled(bool)
         self.btn_dir.setEnabled(bool)
+        self.btn.setEnabled(btn)
 
     # slots
-    def analyse(self):
-        self.set_all(False)
-        self.btn.setEnabled(False)
-
-        self.trigger.connect(self.complete)
-
-        iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
+    def create_thread_analyse(self):
 
         def thread_analyse():
-            self.works = [Work(self.session, url) for url in iter]
-
-        Thread(self.download, thread_analyse)
-
-    def download(self):
-        self.lock = threading.Lock()
-        def thread_download():
-            dir = str(self.dir.text())
             while True:
-                try:
+                self.event_analyse.wait()
+                self.set_all(False, btn=False)
+                iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
+                for _url in iter:
+                    work = Work(self.session, _url)
                     with self.lock:
-                        work = self.works.pop()
-                    work.download(dir)
-                except Exception:
-                    self.trigger.emit()
+                        if work not in self.history:
+                            self.history.append(work)
+                            self.queue.put(work)
+                self.signal_analyse_finished.emit()
+                self.event_analyse.clear()
 
-        threads = [threading.Thread(target=thread_download) for i in range(5)]
-        for thread in threads:
-            thread.start()
+        thread = threading.Thread(target=thread_analyse)
+        thread.setDaemon(True)
+        thread.start()
 
-    def complete(self):
-        self.trigger.disconnect()
-        self.set_all(True)
-        self.btn.setEnabled(True)
+    def create_thread_download(self):
+        def thread_download():
+            while True:
+                self.event_download.wait()
+                print "thread awoke"
+                while not self.queue.empty():
+                    with self.lock:
+                        work = self.queue.get()
+                    work.download(str(self.dir.text()))
+                self.event_download.clear()
+
+        self.threads_download = [threading.Thread(target=thread_download) for i in range(self.threads_num)]
+        for _thread in self.threads_download:
+            _thread.setDaemon(True)
+            _thread.start()
 
     def show_login(self):
         self.login = Login(self.session, self.unlock)
@@ -180,28 +185,36 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
     def unlock(self):
         self.set_all(True)
         self.btn.setText(u"下载")
+
         self.btn.clicked.disconnect()
-        self.btn.clicked.connect(self.analyse)
+        self.btn.clicked.connect(self.event_analyse.set)
 
 
 class Login(QDialog, ui_PixivAgent_login.Ui_login):
     # signals
-    trigger = pyqtSignal()
+    signal_login_successed = pyqtSignal()
+    signal_login_failed = pyqtSignal()
 
-    def __init__(self, session, target):
-        super(Login, self).__init__()
+    def __init__(self, session, slot):
+        QDialog.__init__(self)
+        ui_PixivAgent_login.Ui_login.__init__(self)
         self.setupUi(self)
 
         self.session = session
 
         # connections
         self.btn_login.clicked.connect(self.login)
-        self.trigger.connect(target)
+        self.signal_login_successed.connect(slot)
+        self.signal_login_successed.connect(self.close)
+        self.signal_login_failed.connect(self.set_all)
+
+    def set_all(self, bool=True):
+        self.btn_login.setEnabled(bool)
+        self.email.setReadOnly(not bool)
+        self.password.setReadOnly(not bool)
 
     def login(self):
-        self.btn_login.setEnabled(False)
-        self.email.setReadOnly(True)
-        self.password.setReadOnly(True)
+        self.set_all(False)
 
         # 登录
         def post():
@@ -209,44 +222,20 @@ class Login(QDialog, ui_PixivAgent_login.Ui_login):
             data = {"mode": "login",
                     "pixiv_id": str(self.email.text()),
                     "pass": str(self.password.text())}
-            self.request_login = self.session.post(url=url_login, data=data, allow_redirects=False, verify=False)
+            request_login = self.session.post(url=url_login, data=data, allow_redirects=False, verify=False)
 
-        # 确认
-        def confirm():
-            # if False:
-            if self.request_login.status_code != 302:
-                self.btn_login.setEnabled(True)
-                self.email.setReadOnly(False)
-                self.password.setReadOnly(False)
+            # 确认
+            if request_login.status_code != 302:
+                self.signal_login_failed.emit()
             else:
-                self.trigger.emit()
-                self.close()
+                self.signal_login_successed.emit()
 
-        self.thread_login = Thread(confirm, post)
-
-
-class Thread(QObject, threading.Thread):
-    # signals
-    trigger = pyqtSignal()
-
-    def __init__(self, target, func, *a, **kw):
-        threading.Thread.__init__(self)
-        QObject.__init__(self)
-
-        self.func = func
-        self.a = a
-        self.kw = kw
-
-        self.trigger.connect(target)
-
-        self.start()
-
-    def run(self):
-        self.func(*self.a, **self.kw)
-        self.trigger.emit()
+        thread = threading.Thread(target=post)
+        thread.start()
 
 
 app = QApplication(sys.argv)
+app.setWindowIcon(QIcon("icon.png"))
 main = Main()
 main.show()
 app.exec_()

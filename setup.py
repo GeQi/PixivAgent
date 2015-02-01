@@ -9,5 +9,6 @@ options = {"py2exe": {"bundle_files": 1,
                      }
            }
 setup(options = options,
-	  zipfile=None, 
-	  windows = [{"script":"PixivAgent.py"}])
+	  zipfile = None,
+      data_files = [("",["icon.png"])],
+	  windows = [{"script":"PixivAgent.py", "icon_resources": [(1, "icon.ico")]}])
