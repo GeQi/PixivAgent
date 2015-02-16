@@ -79,7 +79,7 @@ class Work(object):
             elems_image = get_page(self.session, url).find_class("image")
         return [elem_image.get("data-src") for elem_image in elems_image]
 
-    def download(self, dir):
+    def download(self, dir, signal):
         dir_name = self.title+" "+self.id
         escaped = re.sub(r'[/\\:*?"<>|]', '-', dir_name)
         dir_download = os.path.join(dir, escaped)
@@ -92,27 +92,40 @@ class Work(object):
             frames = []
             os.makedirs(dir_temp)
             url = self.urls_image
-            request_zip = self.session.get(url)
-
+            request_zip = self.session.get(url, stream=True)
+            total_length = int(request_zip.headers.get('content-length'))
+            downloaded_len = 0
             with open(dir_zip, "wb") as file:
-                file.write(request_zip.content)
-
+                for chunk in request_zip.iter_content(128):
+                    file.write(chunk)
+                    downloaded_len += len(chunk)
+                    percent = int(downloaded_len*100/total_length)
+                    signal.emit(self.progress, percent)
             with ZipFile(dir_zip) as file_zip:
                 for image in file_zip.namelist():
                     file_zip.extract(image, dir_temp)
                     frames.append(Image.open(os.path.join(dir_temp, image)))
-
             images2gif.writeGif(os.path.join(dir_download, self.id+'.gif'), frames, duration=0.1)
             shutil.rmtree(dir_temp)
         else:
             for i, url in enumerate(self.urls_image):
-                request_image = self.session.get(url)
+                request_image = self.session.get(url, stream=True)
+                total_length = int(request_image.headers.get('content-length'))
+                downloaded_len = 0
                 if self.type == "illust":
                     with open(os.path.join(dir_download, self.id+".jpg"), "wb") as file:
-                        file.write(request_image.content)
+                        for chunk in request_image.iter_content(128):
+                            file.write(chunk)
+                            downloaded_len += len(chunk)
+                            percent = int(downloaded_len*100/total_length)
+                            signal.emit(self.progress, percent)
                 elif self.type == "multiple" or "manga":
                     with open(os.path.join(dir_download, self.id+"_"+str(i+1)+r".jpg"), "wb") as file:
-                        file.write(request_image.content)
+                        for chunk in request_image.iter_content(256):
+                            file.write(chunk)
+                            downloaded_len += len(chunk)
+                            percent = int((i+downloaded_len/total_length)*100/len(self))
+                            signal.emit(self.progress, percent)
 
 
 class Main(QDialog, ui_PixivAgent.Ui_main):
@@ -121,6 +134,9 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
 
     signal_analyse_start = pyqtSignal()
     signal_analyse = pyqtSignal(bool)
+
+    signal_add_row = pyqtSignal(Work)
+    signal_update_bar = pyqtSignal(QProgressBar, int)
 
     def __init__(self):
         QDialog.__init__(self)
@@ -133,6 +149,9 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.hide_table()
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
+        self.table.setColumnWidth(0, 64)
+        self.table.setColumnWidth(2, 150)
+        self.table.horizontalHeader().setResizeMode(1, QHeaderView.Stretch)
 
         # 初始化会话
         self.session = requests.Session()
@@ -160,6 +179,9 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.btn_analyse.clicked.connect(self.event_analyse.set)
         self.signal_analyse_start.connect(self.analyse_start)
         self.signal_analyse.connect(self.check_analyse)
+
+        self.signal_add_row.connect(self.add_row)
+        self.signal_update_bar.connect(self.update_bar)
 
     # 操作gui
     def set_login_mode(self, bool):
@@ -206,16 +228,12 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
             while True:
                 self.event_analyse.wait()
                 self.signal_analyse_start.emit()
-                print "working"
                 iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
-                print "1"
                 for url in iter:
                     work = Work(self.session, url)
-                    print "2"
                     with self.lock:
                         self.queue.put(work)
-                        print "3"
-                print "job done"
+                    self.signal_add_row.emit(work)
                 self.signal_analyse.emit(True)
                 self.event_analyse.clear()
 
@@ -257,6 +275,29 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         else:
             pass     # TODO: 报错
 
+    def add_row(self, work):
+        row_num = self.table.rowCount()
+        self.table.insertRow(row_num)
+
+        item_id = QTableWidgetItem(work.id)
+        item_id.setTextAlignment(Qt.AlignHCenter)
+        item_id.setTextAlignment(Qt.AlignVCenter)
+        self.table.setItem(row_num, 0, item_id)
+
+        item_title = QTableWidgetItem(work.title)
+        item_title.setTextAlignment(Qt.AlignHCenter)
+        item_title.setTextAlignment(Qt.AlignVCenter)
+        self.table.setItem(row_num, 1, item_title)
+
+        progress = QProgressBar()
+        progress.setAlignment(Qt.AlignHCenter)
+        progress.setValue(0)
+        work.progress = progress
+        self.table.setCellWidget(row_num, 2, progress)
+
+    def update_bar(self, progress, percent):
+        progress.setValue(percent)
+
     # 下载线程
     def create_thread_download(self):
         def thread_download():
@@ -268,7 +309,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
                             work = self.queue.get()
                         else:
                             break
-                    work.download(str(self.dir.text()))
+                    work.download(str(self.dir.text()), self.signal_update_bar)
                 self.event_download.clear()
 
         self.threads_download = [threading.Thread(target=thread_download) for i in range(self.threads_num)]
@@ -280,14 +321,6 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
     def show_dir(self):
         dir_download = QFileDialog.getExistingDirectory(self, u"选择下载目录")
         self.dir.setText(dir_download)
-
-
-#     def test(self):
-#         self.table.insertRow(0)
-#         progress = QProgressBar()
-#         progress.setAlignment(Qt.AlignHCenter)
-#         progress.setValue(100)
-#         self.table.setCellWidget(0, 2, progress)
 
 
 app = QApplication(sys.argv)
