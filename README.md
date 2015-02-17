@@ -2,13 +2,14 @@
 a friendly GUI downloader for Pixiv
 
 # Demo
-![demo](http://7u2hae.com1.z0.glb.clouddn.com/demo.gif)
+![demo](http://7u2hae.com1.z0.glb.clouddn.com/1.gif)
 
 # Requirement
 - requests
 - lxml
 - PIL
 - images2gif
+- numpy
 - [pyqt4](http://www.riverbankcomputing.com/software/pyqt/download)
 
 # Usage

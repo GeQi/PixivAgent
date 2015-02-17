@@ -68,7 +68,7 @@ class Work(object):
     def get_urls_image(self):
         if self.type == "ugoira":
             url = re.findall(r'http\S*?1080\.zip', html.tostring(self.page))
-            return url[0].replace("\\", "")
+            return url[0].replace("\\", "")     # TODO: __len__相关
         elif self.type == "illust":
             elems_image = self.page.find_class("original-image")
         elif self.type == "multiple":
@@ -80,6 +80,7 @@ class Work(object):
         return [elem_image.get("data-src") for elem_image in elems_image]
 
     def download(self, dir, signal):
+        # windows不合法文件名转义
         dir_name = self.title+" "+self.id
         escaped = re.sub(r'[/\\:*?"<>|]', '-', dir_name)
         dir_download = os.path.join(dir, escaped)
@@ -89,8 +90,10 @@ class Work(object):
         if self.type == "ugoira":
             dir_temp = os.path.join(dir_download, "temp")
             dir_zip = os.path.join(dir_temp, self.id+".zip")
-            frames = []
-            os.makedirs(dir_temp)
+
+            # 下载压缩包至临时文件夹
+            if not os.path.exists(dir_temp):
+                os.makedirs(dir_temp)
             url = self.urls_image
             request_zip = self.session.get(url, stream=True)
             total_length = int(request_zip.headers.get('content-length'))
@@ -101,11 +104,16 @@ class Work(object):
                     downloaded_len += len(chunk)
                     percent = int(downloaded_len*100/total_length)
                     signal.emit(self.progress, percent)
+
+            # 解压&转换gif
+            frames = []
             with ZipFile(dir_zip) as file_zip:
                 for image in file_zip.namelist():
                     file_zip.extract(image, dir_temp)
                     frames.append(Image.open(os.path.join(dir_temp, image)))
             images2gif.writeGif(os.path.join(dir_download, self.id+'.gif'), frames, duration=0.1)
+
+            # 删除临时文件
             shutil.rmtree(dir_temp)
         else:
             for i, url in enumerate(self.urls_image):
@@ -220,7 +228,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         if bool:
             self.set_login_mode(False)
         else:
-            self.enable_login_input(True)
+            self.enable_login_input(True)       # TODO: 报错
 
     # 解析线程
     def create_thread_analyse(self):
@@ -273,7 +281,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
             self.event_download.set()
             self.enable_analyse_input(True)
         else:
-            pass     # TODO: 报错
+            pass       #TODO: 报错
 
     def add_row(self, work):
         row_num = self.table.rowCount()
