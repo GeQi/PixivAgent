@@ -2,7 +2,7 @@
 a friendly GUI downloader for Pixiv
 
 # Demo
-![demo](http://7u2hae.com1.z0.glb.clouddn.com/1.gif)
+![demo](http://7u2hae.com1.z0.glb.clouddn.com/demo.gif)
 
 # Requirement
 - requests
