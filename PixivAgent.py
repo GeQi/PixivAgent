@@ -137,11 +137,11 @@ class Work(object):
 
 
 class Main(QDialog, ui_PixivAgent.Ui_main):
-    # signals:
-    signal_login = pyqtSignal(bool)
+    # Signals
+    signal_login_status = pyqtSignal(bool)
 
     signal_analyse_start = pyqtSignal()
-    signal_analyse = pyqtSignal(bool)
+    signal_analyse_status = pyqtSignal(bool)
 
     signal_add_row = pyqtSignal(Work)
     signal_update_bar = pyqtSignal(QProgressBar, int)
@@ -153,7 +153,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.set_login_mode(True)
         self.dir.setText(os.path.join(os.getcwd(), "Download"))
 
-        # 初始化下载列表gui
+        # 初始化下载列表Gui
         self.hide_table()
         self.table.setSelectionBehavior(QTableWidget.SelectRows)
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
@@ -172,26 +172,24 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
 
         # 初始化线程
         self.threads_num = 5
-        self.lock = threading.Lock()
         self.event_analyse = threading.Event()
-        self.event_download = threading.Event()
         self.create_thread_analyse()
         self.create_thread_download()
 
-        # connections
+        # Connections
         self.btn_login.clicked.connect(self.login)
-        self.signal_login.connect(self.check_login)
+        self.signal_login_status.connect(self.check_login)
 
         self.btn_dir.clicked.connect(self.show_dir)
 
         self.btn_analyse.clicked.connect(self.event_analyse.set)
         self.signal_analyse_start.connect(self.analyse_start)
-        self.signal_analyse.connect(self.check_analyse)
+        self.signal_analyse_status.connect(self.check_analyse)
 
         self.signal_add_row.connect(self.add_row)
         self.signal_update_bar.connect(self.update_bar)
 
-    # 操作gui
+    # Gui
     def set_login_mode(self, bool):
         self.widget_login.setVisible(bool)
         self.widget_analyse.setVisible(not bool)
@@ -206,29 +204,32 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
             data = {"mode": "login",
                     "pixiv_id": str(self.email.text()),
                     "pass": str(self.password.text())}
-            request_login = self.session.post(url=url_login, data=data, allow_redirects=False, verify=False)
+            request_login = self.session.post(url=url_login, data=data, allow_redirects=False, verify="cert.cer")
 
             # 确认
             if request_login.status_code != 302:
-                self.signal_login.emit(False)
+                self.signal_login_status.emit(False)
             else:
-                self.signal_login.emit(True)
+                self.signal_login_status.emit(True)
 
         self.thread_login = threading.Thread(target=thread_login)
         self.thread_login.setDaemon(True)
         self.thread_login.start()
 
-    # 操作gui
-    def enable_login_input(self, bool):
-        self.email.setEnabled(bool)
-        self.password.setEnabled(bool)
-        self.btn_login.setEnabled(bool)
-
+    # Slots
     def check_login(self, bool):
         if bool:
             self.set_login_mode(False)
         else:
-            self.enable_login_input(True)       # TODO: 报错
+            self.warning = QMessageBox(QMessageBox.Warning, u"登录失败", u"登录失败, 请重试", QMessageBox.Ok)
+            self.warning.show()
+            self.enable_login_input(True)
+
+    # Gui
+    def enable_login_input(self, bool):
+        self.email.setEnabled(bool)
+        self.password.setEnabled(bool)
+        self.btn_login.setEnabled(bool)
 
     # 解析线程
     def create_thread_analyse(self):
@@ -236,20 +237,42 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
             while True:
                 self.event_analyse.wait()
                 self.signal_analyse_start.emit()
-                iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
-                for url in iter:
-                    work = Work(self.session, url)
-                    with self.lock:
+                try:
+                    iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
+                except Exception:       # TODO: 具体
+                    self.signal_analyse_status.emit(False)
+                else:
+                    for url in iter:
+                        work = Work(self.session, url)
                         self.queue.put(work)
-                    self.signal_add_row.emit(work)
-                self.signal_analyse.emit(True)
+                        self.signal_add_row.emit(work)
+                    self.signal_analyse_status.emit(True)
                 self.event_analyse.clear()
 
         self.thread_analyse = threading.Thread(target=thread_analyse)
         self.thread_analyse.setDaemon(True)
         self.thread_analyse.start()
 
-    # 操作gui
+    # Slots
+    def analyse_start(self):
+        self.enable_analyse_input(False)
+        self.show_table()
+
+    def check_analyse(self, bool):
+        if bool:
+            self.enable_analyse_input(True)
+        else:
+            self.warning = QMessageBox(QMessageBox.Warning, u"ID无效", u"输入ID有误, 请重试", QMessageBox.Ok)
+            self.warning.show()
+
+    # Gui
+    def enable_analyse_input(self, bool):
+        self.id.setEnabled(bool)
+        self.amount.setEnabled(bool)
+        self.dir.setEnabled(bool)
+        self.btn_dir.setEnabled(bool)
+        self.btn_analyse.setEnabled(bool)
+
     def show_table(self):
         self.btn_table.clicked.disconnect()
         self.btn_table.setText(u"收起下载列表")
@@ -264,24 +287,6 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.table.setVisible(False)
         self.setMinimumHeight(99)
         self.setMaximumHeight(99)
-
-    def enable_analyse_input(self, bool):
-        self.id.setEnabled(bool)
-        self.amount.setEnabled(bool)
-        self.dir.setEnabled(bool)
-        self.btn_dir.setEnabled(bool)
-        self.btn_analyse.setEnabled(bool)
-
-    def analyse_start(self):
-        self.enable_analyse_input(False)
-        self.show_table()
-
-    def check_analyse(self, bool):
-        if bool:
-            self.event_download.set()
-            self.enable_analyse_input(True)
-        else:
-            pass       #TODO: 报错
 
     def add_row(self, work):
         row_num = self.table.rowCount()
@@ -310,15 +315,8 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
     def create_thread_download(self):
         def thread_download():
             while True:
-                self.event_download.wait()
-                while True:
-                    with self.lock:
-                        if not self.queue.empty():
-                            work = self.queue.get()
-                        else:
-                            break
-                    work.download(str(self.dir.text()), self.signal_update_bar)
-                self.event_download.clear()
+                work = self.queue.get()
+                work.download(str(self.dir.text()), self.signal_update_bar)
 
         self.threads_download = [threading.Thread(target=thread_download) for i in range(self.threads_num)]
         for thread in self.threads_download:
@@ -332,7 +330,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
 
 
 app = QApplication(sys.argv)
-app.setWindowIcon(QIcon("icon.png"))
+app.setWindowIcon(QIcon("icon.bmp"))
 main = Main()
 main.show()
 app.exec_()
