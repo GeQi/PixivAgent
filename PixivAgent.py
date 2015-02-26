@@ -18,7 +18,7 @@ from PyQt4.QtCore import *
 from PyQt4.QtGui import *
 
 def get_page(session, url):
-    request = session.get(url)
+    request = session.get(url=url)
     doc = html.document_fromstring(request.content)
     doc.make_links_absolute("http://www.pixiv.net/")
     return doc
@@ -27,7 +27,8 @@ def iter_urls_work(session, id_user, type, num):
     for page in range(num//20+1):
         url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
         elems_work = get_page(session, url).find_class("image-item")
-
+        if not elems_work:
+            raise Exception
         for i, elem_work in enumerate(elems_work):
             if page*20+i+1 <= num:
                 yield elem_work.find("a").get("href")
@@ -239,14 +240,13 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
                 self.signal_analyse_start.emit()
                 try:
                     iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
-                except Exception:       # TODO: 具体
-                    self.signal_analyse_status.emit(False)
-                else:
                     for url in iter:
                         work = Work(self.session, url)
                         self.queue.put(work)
                         self.signal_add_row.emit(work)
-                    self.signal_analyse_status.emit(True)
+                        self.signal_analyse_status.emit(True)
+                except Exception:
+                    self.signal_analyse_status.emit(False)
                 self.event_analyse.clear()
 
         self.thread_analyse = threading.Thread(target=thread_analyse)
@@ -256,14 +256,14 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
     # Slots
     def analyse_start(self):
         self.enable_analyse_input(False)
-        self.show_table()
 
     def check_analyse(self, bool):
         if bool:
-            self.enable_analyse_input(True)
+            self.show_table()
         else:
-            self.warning = QMessageBox(QMessageBox.Warning, u"ID无效", u"输入ID有误, 请重试", QMessageBox.Ok)
+            self.warning = QMessageBox(QMessageBox.Warning, u"输入无效", u"ID或项数输入有误, 请重试", QMessageBox.Ok)
             self.warning.show()
+        self.enable_analyse_input(True)
 
     # Gui
     def enable_analyse_input(self, bool):
