@@ -4,7 +4,7 @@ import os
 import re
 import sys
 import threading
-import Queue
+import queue
 import shutil
 from zipfile import ZipFile
 
@@ -14,33 +14,17 @@ from PIL import Image
 import images2gif
 
 import ui_PixivAgent
-from PyQt4.QtCore import *
-from PyQt4.QtGui import *
+from PyQt5.QtCore import *
+from PyQt5.QtWidgets import *
+from PyQt5.QtGui import *
 
-def get_page(session, url):
-    request = session.get(url=url)
-    doc = html.document_fromstring(request.content)
-    doc.make_links_absolute("http://www.pixiv.net/")
-    return doc
-
-def iter_urls_work(session, id_user, type, num):
-    for page in range(num//20+1):
-        url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
-        elems_work = get_page(session, url).find_class("image-item")
-        if not elems_work:
-            raise Exception
-        for i, elem_work in enumerate(elems_work):
-            if page*20+i+1 <= num:
-                yield elem_work.find("a").get("href")
-            else:
-                raise StopIteration
 
 class Work(object):
     def __init__(self, session, url_work):
         super(Work, self).__init__()
         self.session = session
         self.url = url_work
-        self.page = get_page(self.session, self.url)
+        self.page = self.get_page(self.session, self.url)
         self.type = self.get_type()
         self.id = self.get_id()
         self.title = self.get_title()
@@ -48,6 +32,12 @@ class Work(object):
 
     def __len__(self):
         return len(self.urls_image)
+
+    def get_page(self, url):
+        request = self.session.get(url=url)
+        etree = html.document_fromstring(request.content)
+        etree.make_links_absolute("http://www.pixiv.net/")
+        return etree
 
     def get_type(self):
         elem_works_display = self.page.find_class("works_display")
@@ -74,10 +64,10 @@ class Work(object):
             elems_image = self.page.find_class("original-image")
         elif self.type == "multiple":
             url = self.page.find_class("works_display")[0].find("a").get("href")
-            elems_image = get_page(self.session, url).find_class("image")
+            elems_image = self.get_page(self.session, url).find_class("image")
         elif self.type == "manga":
             url = self.page.find_class("works_display")[0].find("a").get("href")
-            elems_image = get_page(self.session, url).find_class("image")
+            elems_image = self.get_page(self.session, url).find_class("image")
         return [elem_image.get("data-src") for elem_image in elems_image]
 
     def download(self, dir, signal):
@@ -160,7 +150,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.table.setEditTriggers(QTableWidget.NoEditTriggers)
         self.table.setColumnWidth(0, 64)
         self.table.setColumnWidth(2, 150)
-        self.table.horizontalHeader().setResizeMode(1, QHeaderView.Stretch)
+        self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Stretch)
 
         # 初始化会话
         self.session = requests.Session()
@@ -169,7 +159,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.session.headers.update(headers)
 
         # 初始化队列
-        self.queue = Queue.Queue()
+        self.queue = queue.Queue()
 
         # 初始化线程
         self.threads_num = 5
@@ -234,6 +224,18 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
 
     # 解析线程
     def create_thread_analyse(self):
+        def iter_urls_work(id_user, type, num):
+            for page in range(num//20+1):
+                url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
+                elems_work = html.document_fromstring(self.session.get(url)).find_class("image-item")
+                if not elems_work:
+                    raise Exception
+                for i, elem_work in enumerate(elems_work):
+                    if page*20+i+1 <= num:
+                        yield elem_work.find("a").get("href")
+                    else:
+                        raise StopIteration
+
         def thread_analyse():
             while True:
                 self.event_analyse.wait()

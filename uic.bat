@@ -1,1 +1,1 @@
-pyuic4 -x PixivAgent.ui -o ui_PixivAgent.py
+pyuic5 -x PixivAgent.ui -o ui_PixivAgent.py
