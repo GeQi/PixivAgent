@@ -19,19 +19,6 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import *
 
 
-def iter_urls_work(session, id_user, type, num):
-    for page in range(num//20+1):
-        url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
-        elems_work = self.get_page(session, url).find_class("image-item")
-        if not elems_work:
-            raise Exception
-        for i, elem_work in enumerate(elems_work):
-            if page*20+i+1 <= num:
-                yield elem_work.find("a").get("href")
-            else:
-                raise StopIteration
-
-
 class Work(object):
     def __init__(self, session, url_work):
         super(Work, self).__init__()
@@ -237,6 +224,18 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
 
     # 解析线程
     def create_thread_analyse(self):
+        def iter_urls_work(id_user, type, num):
+            for page in range(num//20+1):
+                url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
+                elems_work = html.document_fromstring(self.session.get(url)).find_class("image-item")
+                if not elems_work:
+                    raise Exception
+                for i, elem_work in enumerate(elems_work):
+                    if page*20+i+1 <= num:
+                        yield elem_work.find("a").get("href")
+                    else:
+                        raise StopIteration
+
         def thread_analyse():
             while True:
                 self.event_analyse.wait()
