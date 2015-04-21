@@ -11,7 +11,6 @@ from zipfile import ZipFile
 import requests
 from lxml import html
 from PIL import Image
-import images2gif
 
 import ui_PixivAgent
 from PyQt5.QtCore import *
@@ -24,7 +23,7 @@ class Work(object):
         super(Work, self).__init__()
         self.session = session
         self.url = url_work
-        self.page = self.get_page(self.session, self.url)
+        self.page = self.get_page(self.url)
         self.type = self.get_type()
         self.id = self.get_id()
         self.title = self.get_title()
@@ -58,7 +57,7 @@ class Work(object):
 
     def get_urls_image(self):
         if self.type == "ugoira":
-            url = re.findall(r'http\S*?1080\.zip', html.tostring(self.page))
+            url = re.findall(r'http\S*?1080\.zip', html.tostring(self.page).decode('utf-8'))
             return url[0].replace("\\", "")     # TODO: __len__相关
         elif self.type == "illust":
             elems_image = self.page.find_class("original-image")
@@ -102,7 +101,9 @@ class Work(object):
                 for image in file_zip.namelist():
                     file_zip.extract(image, dir_temp)
                     frames.append(Image.open(os.path.join(dir_temp, image)))
-            images2gif.writeGif(os.path.join(dir_download, self.id+'.gif'), frames, duration=0.1)
+            dir_gif = os.path.join(dir_download, self.id+'.gif')
+            # images2gif.writeGif(dir_gif, frames, duration=0.1)
+            # TO-DO 命令行工具
 
             # 删除临时文件
             shutil.rmtree(dir_temp)
@@ -227,27 +228,31 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         def iter_urls_work(id_user, type, num):
             for page in range(num//20+1):
                 url = "http://www.pixiv.net/member_illust.php?id=%d&type=%s&p=%d" % (id_user, type, page+1)
-                elems_work = html.document_fromstring(self.session.get(url)).find_class("image-item")
-                if not elems_work:
+                etree_work = html.document_fromstring(self.session.get(url).content)
+                etree_work.make_links_absolute("http://www.pixiv.net/")
+                elems_work = etree_work.find_class("image-item")
+                if elems_work:
+                    for i, elem_work in enumerate(elems_work):
+                        if page*20+i+1 <= num:
+                            yield elem_work.find("a").get("href")
+                        else:
+                            raise StopIteration
+                else:
                     raise Exception
-                for i, elem_work in enumerate(elems_work):
-                    if page*20+i+1 <= num:
-                        yield elem_work.find("a").get("href")
-                    else:
-                        raise StopIteration
 
         def thread_analyse():
             while True:
                 self.event_analyse.wait()
                 self.signal_analyse_start.emit()
                 try:
-                    iter = iter_urls_work(self.session, int(self.id.text()), "", int(self.amount.text()))
+                    iter = iter_urls_work(int(self.id.text()), "", int(self.amount.text()))
                     for url in iter:
                         work = Work(self.session, url)
                         self.queue.put(work)
                         self.signal_add_row.emit(work)
                         self.signal_analyse_status.emit(True)
-                except Exception:
+                except Exception as e:
+                    print(e)
                     self.signal_analyse_status.emit(False)
                 self.event_analyse.clear()
 
