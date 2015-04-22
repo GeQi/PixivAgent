@@ -47,5 +47,5 @@ And then
 - [requests](https://github.com/kennethreitz/requests)
 - [lxml](https://github.com/lxml/lxml)
 - [wand](https://github.com/dahlia/wand)
-- 
+- [imagemagick](http://www.imagemagick.org/)
 - [pyqt](http://www.riverbankcomputing.co.uk/software/pyqt/intro)
