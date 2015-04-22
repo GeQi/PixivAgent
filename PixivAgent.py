@@ -104,11 +104,12 @@ class Work(object):
 
             dir_gif = os.path.join(dir_download, self.id+'.gif')
 
+            delay = 10
             with Image() as file_gif:
                 file_gif.sequence.extend(frames)
                 for frame in file_gif.sequence:
                     with frame:
-                        frame.delay = 2
+                        frame.delay = delay
                 file_gif.save(filename=dir_gif)
 
             # 删除临时文件
@@ -149,6 +150,7 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         ui_PixivAgent.Ui_main.__init__(self)
         self.setupUi(self)
         self.set_login_mode(True)
+        self.amount.setValue(5)
         self.dir.setText(os.path.join(os.getcwd(), "Download"))
 
         # 初始化下载列表Gui
