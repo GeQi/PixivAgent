@@ -17,6 +17,7 @@ $ sudo pip3 install requests Wand
 $ git clone https://github.com/GeQi/PixivAgent.git && cd PixivAgent
 ```
 And then
+
 `$ python3 PixivAgent.py`
 
 ## For Debian/Ubuntu:
@@ -27,20 +28,24 @@ $ sudo pip3 install requests Wand
 $ git clone https://github.com/GeQi/PixivAgent.git && cd PixivAgent
 ```
 And then
+
 `$ python3 PixivAgent.py`
 
 ## For Windows:
 Use `pip` to `intsall` the `.whl` pakage from [here](http://www.lfd.uci.edu/~gohlke/pythonlibs/#lxml)
-[Install ImageMagick on Windows](http://docs.wand-py.org/en/latest/guide/install.html#install-imagemagick-on-windows)
+
+Install [ImageMagick on Windows](http://docs.wand-py.org/en/latest/guide/install.html#install-imagemagick-on-windows)
 ```
 $ pip install requests Wand
 $ git clone https://github.com/GeQi/PixivAgent.git && cd PixivAgent
 ```
 And then
+
 `$ python3 PixivAgent.py`
 
 # Credits
 - [requests](https://github.com/kennethreitz/requests)
 - [lxml](https://github.com/lxml/lxml)
 - [wand](https://github.com/dahlia/wand)
+- 
 - [pyqt](http://www.riverbankcomputing.co.uk/software/pyqt/intro)
