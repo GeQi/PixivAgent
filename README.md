@@ -15,7 +15,7 @@ a friendly GUI downloader for Pixiv base on **Python3** & Qt
 ### For Fedora/CentOS:
 
 ```
-$ yum update
+$ sudo yum update
 $ sudo yum install python3-lxml ImageMagick-devel
 $ sudo pip3 install requests Wand
 $ git clone https://github.com/GeQi/PixivAgent.git && cd PixivAgent
@@ -28,7 +28,7 @@ And then
 ### For Debian/Ubuntu:
 
 ```
-$ apt-get update
+$ sudo apt-get update
 $ sudo apt-get install python3-lxml libmagickwand-dev
 $ sudo pip3 install requests Wand
 $ git clone https://github.com/GeQi/PixivAgent.git && cd PixivAgent
