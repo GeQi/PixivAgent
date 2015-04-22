@@ -10,7 +10,7 @@ from zipfile import ZipFile
 
 import requests
 from lxml import html
-from PIL import Image
+from wand.image import Image
 
 import ui_PixivAgent
 from PyQt5.QtCore import *
@@ -63,10 +63,10 @@ class Work(object):
             elems_image = self.page.find_class("original-image")
         elif self.type == "multiple":
             url = self.page.find_class("works_display")[0].find("a").get("href")
-            elems_image = self.get_page(self.session, url).find_class("image")
+            elems_image = self.get_page(url).find_class("image")
         elif self.type == "manga":
             url = self.page.find_class("works_display")[0].find("a").get("href")
-            elems_image = self.get_page(self.session, url).find_class("image")
+            elems_image = self.get_page(url).find_class("image")
         return [elem_image.get("data-src") for elem_image in elems_image]
 
     def download(self, dir, signal):
@@ -100,10 +100,16 @@ class Work(object):
             with ZipFile(dir_zip) as file_zip:
                 for image in file_zip.namelist():
                     file_zip.extract(image, dir_temp)
-                    frames.append(Image.open(os.path.join(dir_temp, image)))
+                    frames.append(Image(filename=os.path.join(dir_temp, image)))
+
             dir_gif = os.path.join(dir_download, self.id+'.gif')
-            # images2gif.writeGif(dir_gif, frames, duration=0.1)
-            # TO-DO 命令行工具
+
+            with Image() as file_gif:
+                file_gif.sequence.extend(frames)
+                for frame in file_gif.sequence:
+                    with frame:
+                        frame.delay = 2
+                file_gif.save(filename=dir_gif)
 
             # 删除临时文件
             shutil.rmtree(dir_temp)

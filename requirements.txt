@@ -1,5 +1,0 @@
-requests
-lxml
-PIL
-images2gif
-numpy
