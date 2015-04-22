@@ -50,7 +50,7 @@ $ git clone https://github.com/GeQi/PixivAgent.git && cd PixivAgent
 ```
 And then
 
-`$ python3 PixivAgent.py`
+`$ python PixivAgent.py`
 
 # Credits
 
