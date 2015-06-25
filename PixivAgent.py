@@ -344,8 +344,9 @@ class Main(QDialog, ui_PixivAgent.Ui_main):
         self.dir.setText(dir_download)
 
 
-app = QApplication(sys.argv)
-app.setWindowIcon(QIcon("icon.bmp"))
-main = Main()
-main.show()
-app.exec_()
+if __name__ == '__main__':
+    app = QApplication(sys.argv)
+    app.setWindowIcon(QIcon("icon.bmp"))
+    main = Main()
+    main.show()
+    app.exec_()
